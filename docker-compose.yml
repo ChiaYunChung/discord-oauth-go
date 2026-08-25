@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  sso-broker:
+    image: lab-sso-broker:v1
+    container_name: lab-sso-broker
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
