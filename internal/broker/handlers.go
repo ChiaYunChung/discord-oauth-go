@@ -13,6 +13,7 @@ import (
 const (
 	pendingSessionTTL = 10 * time.Minute // 使用者完成 Discord 登入的時間上限
 	issuedCodeTTL     = 2 * time.Minute  // client 拿 code 換 token 的時間上限
+	accessTokenTTL    = 1 * time.Hour    // broker 核發的 access_token 有效期限
 )
 
 // handleHealthz 供 docker-compose healthcheck / 監控探活使用。
@@ -171,12 +172,29 @@ func (a *App) handleClientToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	discordToken := userData["discord_token"]
+	// 核發本服務自己的 opaque access_token，不把使用者的原始 Discord token
+	// 直接交給下游服務：
+	//   1. 就算這個 access_token 外流，拿到的人也打不了 Discord API，
+	//      對 Discord 來說它毫無意義；
+	//   2. /userinfo 才能靠這裡存的紀錄驗證「這是不是本服務自己發出去的
+	//      token」，避免任何人拿隨便一個 Discord token（跟本服務的登入流程
+	//      毫無關係）就能查到使用者的 groups/角色等敏感資訊。
+	accessToken, err := generateRandomID("at_")
+	if err != nil {
+		log.Printf("[Error] 產生 access token 失敗: %v", err)
+		http.Error(w, "內部錯誤", http.StatusInternalServerError)
+		return
+	}
+	a.store.Set(accessToken, map[string]string{
+		"discord_token": userData["discord_token"],
+		"client_id":     clientID,
+	}, accessTokenTTL)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"access_token": discordToken,
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"access_token": accessToken,
 		"token_type":   "Bearer",
+		"expires_in":   int(accessTokenTTL.Seconds()),
 	})
 }
 
@@ -188,7 +206,16 @@ func (a *App) handleClientUserInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing Token", http.StatusUnauthorized)
 		return
 	}
-	discordToken := strings.TrimPrefix(authHeader, bearerPrefix)
+	accessToken := strings.TrimPrefix(authHeader, bearerPrefix)
+
+	// 必須是本服務自己核發過的 access_token 才放行，拒絕任何來路不明、
+	// 未經過 /authorize -> /callback -> /token 這條流程的 Discord token。
+	tokenData, ok := a.store.Get(accessToken)
+	if !ok {
+		http.Error(w, "Invalid Token", http.StatusUnauthorized)
+		return
+	}
+	discordToken := tokenData["discord_token"]
 
 	discordUser, err := fetchDiscordUser(discordToken)
 	if err != nil {

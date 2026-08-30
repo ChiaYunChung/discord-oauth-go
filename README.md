@@ -83,6 +83,13 @@ go run ./cmd/discord-oauth-go
 | `GET /userinfo` | 下游服務帶 `Authorization: Bearer <access_token>` 取得使用者資料（`sub`/`username`/`name`/`email`/`groups`，有自訂頭像時再加 `picture`） |
 | `GET /healthz` | 健康檢查，回傳 `{"status":"ok"}` |
 
+### 關於 access_token
+
+`/token` 核發的 `access_token` 是本服務自己產生的 opaque token（`crypto/rand`），**不是**使用者的原始 Discord token；本服務會在內部記錄這個 token 對應哪個 client、有效期預設 1 小時。這樣設計是為了：
+
+- 就算 `access_token` 意外外流，拿到的人也打不了 Discord API，對 Discord 來說它毫無意義。
+- `/userinfo` 才能驗證「這個 token 是不是真的從本服務的 `/authorize` → `/callback` → `/token` 這條路發出來的」，拒絕任何拿著跟本服務登入流程無關的 Discord token 就想查詢使用者 `groups`/身分資料的請求。
+
 ### 稽核 log
 
 `/callback` 每次登入都會印一行 `[Audit] login user_id=... username=... result=allowed|denied|error groups=[...] ip=...`，方便追查誰在什麼時候用什麼身份登入過。

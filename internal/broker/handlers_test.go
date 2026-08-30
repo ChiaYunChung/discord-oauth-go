@@ -125,15 +125,21 @@ func TestFullLoginFlow_AllowedWithGroupsAndPicture(t *testing.T) {
 	var tokBody struct {
 		AccessToken string `json:"access_token"`
 		TokenType   string `json:"token_type"`
+		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err := json.NewDecoder(tokResp.Body).Decode(&tokBody); err != nil {
 		t.Fatalf("failed to decode token response: %v", err)
 	}
-	if tokBody.AccessToken != "discord-token-1" {
-		t.Fatalf("want access_token=discord-token-1, got %q", tokBody.AccessToken)
+	// access_token 現在是 broker 自己核發的 opaque token，不是原始的 Discord
+	// token，所以不會等於 mock Discord 回傳的 "discord-token-1"。
+	if tokBody.AccessToken == "" || tokBody.AccessToken == "discord-token-1" {
+		t.Fatalf("want an opaque broker-issued access_token, got %q", tokBody.AccessToken)
 	}
 	if tokBody.TokenType != "Bearer" {
 		t.Fatalf("want token_type=Bearer, got %q", tokBody.TokenType)
+	}
+	if tokBody.ExpiresIn <= 0 {
+		t.Fatalf("want a positive expires_in, got %d", tokBody.ExpiresIn)
 	}
 
 	// 同一組 code 不能重複兌換
@@ -375,6 +381,43 @@ func TestHandleClientUserInfo_MissingToken(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("want 401 when no Authorization header is set, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandleClientUserInfo_RejectsTokenNotIssuedByBroker 是這次資安修復的
+// 回歸測試：/userinfo 不該相信任何拿得出來的 Discord bearer token，只能接受
+// 真的透過 /authorize -> /callback -> /token 這條流程換到的 access_token。
+// 在修復前，這裡會直接拿使用者自己的 Discord token 去查 groups/身分資料，
+// 等於任何人只要有（跟本服務登入流程完全無關的）Discord token 就能查到
+// 使用者是不是屬於某個特權 group。
+func TestHandleClientUserInfo_RejectsTokenNotIssuedByBroker(t *testing.T) {
+	withMockDiscord(t, mockDiscordConfig{
+		AccessToken: "victims-own-discord-token",
+		User:        map[string]interface{}{"id": "user-1", "username": "victim"},
+		Guilds:      []map[string]interface{}{{"id": "guild-1"}},
+	})
+
+	cfg := &Config{
+		Guilds:  []GuildConfig{{ID: "guild-1", GroupName: "admin"}},
+		Clients: []ClientConfig{{ID: "test-client", Secret: "test-secret"}},
+	}
+	broker := newTestBroker(newTestApp(cfg))
+	defer broker.Close()
+
+	// 直接拿一個「有效但沒經過本服務核發」的 Discord token 打 /userinfo，
+	// 即使這個 token 對 Discord 來說完全有效（mock 會認得它），broker 也應該
+	// 因為在自己的 Store 裡查不到這個值而拒絕，不能把它當成自己發的
+	// access_token 使用。
+	req, _ := http.NewRequest(http.MethodGet, broker.URL+"/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer victims-own-discord-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 401 for a Discord token never issued by this broker, got %d: %s", resp.StatusCode, body)
 	}
 }
 
