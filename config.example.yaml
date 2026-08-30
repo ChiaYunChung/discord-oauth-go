@@ -1,0 +1,41 @@
+# 複製這份檔案為 config.yaml 並依需求修改。
+# config.yaml 已加入 .gitignore，不會被提交進版控。
+
+# 允許登入的 Discord 伺服器清單。
+# 只要符合清單中「任一個」guild 的規則即可通過驗證。
+# groupName（選填）：命中該規則時要塞進 /userinfo 的 groups claim，
+# 供 Portainer/LiteLLM 這類支援用 group 對應權限的服務使用。
+# 同一個 guild id 可以拆成多筆規則，讓不同角色對應不同 groupName
+# （見下方範例：同一個伺服器，Admin 角色 → group "admin"，其餘成員 → group "member"）。
+guilds:
+  - id: "111111111111111111" # Discord 伺服器 ID
+    name: "Main Server - Admin"
+    roleIds: ["555555555555555555"] # 擁有此角色才算 admin
+    groupName: "admin"
+
+  - id: "111111111111111111" # 同一個伺服器，當一般成員的兜底規則
+    name: "Main Server - Member"
+    roleIds: [] # 空陣列 = 只要是該伺服器成員即可通過
+    groupName: "member"
+
+  - id: "222222222222222222"
+    name: "Another Server"
+    roleIds: # 有設定時，使用者需擁有其中至少一個角色
+      - "333333333333333333"
+      - "444444444444444444"
+    groupName: "another-server-member"
+
+# /authorize 允許導回的 redirect_uri 白名單，需完全相符。
+# 留空則不做檢查（不建議用於正式環境，僅適合本機開發）。
+allowedRedirectURIs:
+  - "https://portainer.example.com/oauth/callback"
+  - "https://litellm.example.com/callback"
+
+# 允許呼叫 /token 端點換取 access_token 的 client。
+# 建議每個串接本服務的系統（Portainer、LiteLLM…）各自設定一組，
+# secret 請自行產生高強度亂數字串。
+clients:
+  - id: "portainer"
+    secret: "change-me"
+  - id: "litellm"
+    secret: "change-me"
