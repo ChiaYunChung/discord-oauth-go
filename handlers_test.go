@@ -61,8 +61,9 @@ func TestFullLoginFlow_AllowedWithGroupsAndPicture(t *testing.T) {
 		Guilds: []GuildConfig{
 			{ID: "guild-1", RoleIDs: []string{"role-admin"}, GroupName: "admin"},
 		},
-		AllowedRedirectURIs: []string{"https://client.example.com/cb"},
-		Clients:             []ClientConfig{{ID: "test-client", Secret: "test-secret"}},
+		Clients: []ClientConfig{
+			{ID: "test-client", Secret: "test-secret", RedirectURIs: []string{"https://client.example.com/cb"}},
+		},
 	}
 	broker := newTestBroker(newTestApp(cfg))
 	defer broker.Close()
@@ -190,34 +191,81 @@ func TestFullLoginFlow_AllowedWithGroupsAndPicture(t *testing.T) {
 	}
 }
 
-func TestHandleClientAuthorize_RejectsDisallowedRedirectURI(t *testing.T) {
-	cfg := &Config{
-		Guilds:              []GuildConfig{{ID: "guild-1"}},
-		AllowedRedirectURIs: []string{"https://client.example.com/cb"},
-	}
-	broker := newTestBroker(newTestApp(cfg))
-	defer broker.Close()
-
-	resp, err := noRedirectClient().Get(broker.URL + "/authorize?redirect_uri=" + url.QueryEscape("https://evil.example.com") + "&state=x")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("want 400 for a redirect_uri not in the allowlist, got %d", resp.StatusCode)
-	}
-}
-
-func TestHandleClientAuthorize_MissingRedirectURI(t *testing.T) {
+func TestHandleClientAuthorize_MissingClientID(t *testing.T) {
 	cfg := &Config{Guilds: []GuildConfig{{ID: "guild-1"}}}
 	broker := newTestBroker(newTestApp(cfg))
 	defer broker.Close()
 
-	resp, err := noRedirectClient().Get(broker.URL + "/authorize?state=x")
+	resp, err := noRedirectClient().Get(broker.URL + "/authorize?redirect_uri=" + url.QueryEscape("https://client.example.com/cb") + "&state=x")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400 when client_id is missing, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleClientAuthorize_UnknownClientID(t *testing.T) {
+	cfg := &Config{
+		Guilds:  []GuildConfig{{ID: "guild-1"}},
+		Clients: []ClientConfig{{ID: "test-client", Secret: "test-secret"}},
+	}
+	broker := newTestBroker(newTestApp(cfg))
+	defer broker.Close()
+
+	resp, err := noRedirectClient().Get(broker.URL + "/authorize?redirect_uri=" + url.QueryEscape("https://client.example.com/cb") + "&state=x&client_id=not-registered")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400 for an unregistered client_id, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleClientAuthorize_MissingRedirectURI(t *testing.T) {
+	cfg := &Config{
+		Guilds:  []GuildConfig{{ID: "guild-1"}},
+		Clients: []ClientConfig{{ID: "test-client", Secret: "test-secret"}},
+	}
+	broker := newTestBroker(newTestApp(cfg))
+	defer broker.Close()
+
+	resp, err := noRedirectClient().Get(broker.URL + "/authorize?state=x&client_id=test-client")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("want 400 when redirect_uri is missing, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleClientAuthorize_RedirectURIsAreScopedPerClient(t *testing.T) {
+	cfg := &Config{
+		Guilds: []GuildConfig{{ID: "guild-1"}},
+		Clients: []ClientConfig{
+			{ID: "client-a", Secret: "secret-a", RedirectURIs: []string{"https://a.example.com/cb"}},
+			{ID: "client-b", Secret: "secret-b", RedirectURIs: []string{"https://b.example.com/cb"}},
+		},
+	}
+	broker := newTestBroker(newTestApp(cfg))
+	defer broker.Close()
+
+	// client-a 借用 client-b 登記的 redirect_uri 應該被拒絕
+	resp, err := noRedirectClient().Get(broker.URL + "/authorize?redirect_uri=" + url.QueryEscape("https://b.example.com/cb") + "&state=x&client_id=client-a")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400 when client-a uses client-b's redirect_uri, got %d", resp.StatusCode)
+	}
+
+	// client-a 用自己登記的 redirect_uri 應該正常通過
+	resp2, err := noRedirectClient().Get(broker.URL + "/authorize?redirect_uri=" + url.QueryEscape("https://a.example.com/cb") + "&state=x&client_id=client-a")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp2.StatusCode != http.StatusFound {
+		t.Fatalf("want 302 when client-a uses its own redirect_uri, got %d", resp2.StatusCode)
 	}
 }
 

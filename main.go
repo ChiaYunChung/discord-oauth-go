@@ -35,11 +35,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("載入設定檔失敗: %v", err)
 	}
-	if len(cfg.AllowedRedirectURIs) == 0 {
-		log.Println("[Warn] 未設定 allowedRedirectURIs，將接受任意 redirect_uri（不建議用於正式環境）")
-	}
 	if len(cfg.Clients) == 0 {
-		log.Println("[Warn] 未設定 clients，/token 端點將拒絕所有請求")
+		log.Println("[Warn] 未設定 clients，/authorize 與 /token 端點將拒絕所有請求")
+	}
+	for _, c := range cfg.Clients {
+		if len(c.RedirectURIs) == 0 {
+			log.Printf("[Warn] client_id=%s 未設定 redirectURIs，將接受任意 redirect_uri（不建議用於正式環境）", c.ID)
+		}
 	}
 
 	app := &App{

@@ -36,8 +36,11 @@ DISCORD_REDIRECT_URI=https://your-broker.example.com/callback
   - `roleIds` 留空 → 只要是該伺服器成員即可
   - `roleIds` 有設定 → 使用者需擁有其中**至少一個**角色
   - `groupName`（選填）→ 命中該規則時塞進 `/userinfo` 的 `groups` claim。同一個 guild id 可拆成多筆規則，讓不同角色對應不同 group（見 `config.example.yaml`）
-- `allowedRedirectURIs`：`/authorize` 允許導回的 redirect_uri 白名單（防止 open redirect）。留空則不檢查，僅建議本機開發使用。
-- `clients`：允許呼叫 `/token` 端點的 client（例如 Portainer、LiteLLM），各自一組 `id` + `secret`。
+- `clients`：允許串接本服務的 client（例如 Portainer、LiteLLM），各自一組：
+  - `id` / `secret`：標準 OAuth `client_id` / `client_secret`，呼叫 `/token` 時要帶（HTTP Basic 或 form body 皆可）
+  - `redirectURIs`：這個 client 的 `/authorize` redirect_uri 白名單，**只跟這個 client 自己比對**，其他 client 借用不了，達到互相隔離。留空則不檢查（僅建議本機開發使用）
+
+`/authorize` 現在要求帶 `client_id`，且必須是 `clients` 裡登記過的其中一個，否則會被拒絕。
 
 預設路徑是執行目錄下的 `config.yaml`，也可用 `CONFIG_PATH` 環境變數指定其他路徑。
 

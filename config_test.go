@@ -22,11 +22,11 @@ guilds:
     name: "Example"
     roleIds: ["222"]
     groupName: "admin"
-allowedRedirectURIs:
-  - "https://client.example.com/cb"
 clients:
   - id: "portainer"
     secret: "s3cret"
+    redirectURIs:
+      - "https://client.example.com/cb"
 `)
 
 	cfg, err := LoadConfig(path)
@@ -94,21 +94,32 @@ func TestConfig_FindClient(t *testing.T) {
 	}
 }
 
-func TestConfig_IsRedirectURIAllowed(t *testing.T) {
+func TestClientConfig_IsRedirectURIAllowed(t *testing.T) {
 	t.Run("empty allowlist permits anything", func(t *testing.T) {
-		cfg := &Config{}
-		if !cfg.IsRedirectURIAllowed("https://anything.example.com") {
+		c := ClientConfig{ID: "a"}
+		if !c.IsRedirectURIAllowed("https://anything.example.com") {
 			t.Fatal("want true when allowlist is empty")
 		}
 	})
 
 	t.Run("non-empty allowlist requires exact match", func(t *testing.T) {
-		cfg := &Config{AllowedRedirectURIs: []string{"https://client.example.com/cb"}}
-		if !cfg.IsRedirectURIAllowed("https://client.example.com/cb") {
+		c := ClientConfig{ID: "a", RedirectURIs: []string{"https://client.example.com/cb"}}
+		if !c.IsRedirectURIAllowed("https://client.example.com/cb") {
 			t.Fatal("want true for an allowed uri")
 		}
-		if cfg.IsRedirectURIAllowed("https://evil.example.com") {
+		if c.IsRedirectURIAllowed("https://evil.example.com") {
 			t.Fatal("want false for a uri not in the allowlist")
+		}
+	})
+
+	t.Run("redirect uris are scoped per client", func(t *testing.T) {
+		a := ClientConfig{ID: "a", RedirectURIs: []string{"https://a.example.com/cb"}}
+		b := ClientConfig{ID: "b", RedirectURIs: []string{"https://b.example.com/cb"}}
+		if a.IsRedirectURIAllowed("https://b.example.com/cb") {
+			t.Fatal("want client a unable to use client b's redirect_uri")
+		}
+		if b.IsRedirectURIAllowed("https://a.example.com/cb") {
+			t.Fatal("want client b unable to use client a's redirect_uri")
 		}
 	})
 }

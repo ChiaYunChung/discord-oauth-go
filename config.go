@@ -21,21 +21,35 @@ type GuildConfig struct {
 	GroupName string   `yaml:"groupName"`
 }
 
-// ClientConfig 描述一個允許呼叫 /token 端點換取 access_token 的 OAuth client
-// （例如 Portainer、LiteLLM）。
+// ClientConfig 描述一個允許串接本服務的 OAuth client（例如 Portainer、LiteLLM）。
+// RedirectURIs 是這個 client 專屬的 redirect_uri 白名單，跟其他 client 互相隔離：
+// A client 不能借用 B client 登記的 redirect_uri 發起登入流程。
+// 留空則不檢查該 client 的 redirect_uri（僅適合開發環境）。
 type ClientConfig struct {
-	ID     string `yaml:"id"`
-	Secret string `yaml:"secret"`
+	ID           string   `yaml:"id"`
+	Secret       string   `yaml:"secret"`
+	RedirectURIs []string `yaml:"redirectURIs"`
+}
+
+// IsRedirectURIAllowed 檢查 uri 是否在這個 client 自己的白名單內。
+func (c ClientConfig) IsRedirectURIAllowed(uri string) bool {
+	if len(c.RedirectURIs) == 0 {
+		return true
+	}
+	for _, allowed := range c.RedirectURIs {
+		if allowed == uri {
+			return true
+		}
+	}
+	return false
 }
 
 // Config 對應 config.yaml 的內容。
 type Config struct {
 	// Guilds 是允許登入的伺服器清單，符合其中任一個 guild 的規則即算通過。
 	Guilds []GuildConfig `yaml:"guilds"`
-	// AllowedRedirectURIs 是 /authorize 允許導回的 redirect_uri 白名單。
-	// 留空則不檢查（僅適合開發環境）。
-	AllowedRedirectURIs []string `yaml:"allowedRedirectURIs"`
-	// Clients 是允許呼叫 /token 的 client 清單。
+	// Clients 是允許串接本服務的 client 清單，每個 client 各自的 redirect_uri
+	// 白名單見 ClientConfig.RedirectURIs。
 	Clients []ClientConfig `yaml:"clients"`
 }
 
@@ -76,18 +90,4 @@ func (c *Config) FindClient(clientID string) (ClientConfig, bool) {
 		}
 	}
 	return ClientConfig{}, false
-}
-
-// IsRedirectURIAllowed 檢查 redirect_uri 是否在白名單內。
-// 若沒有設定白名單，預設放行（呼叫端應自行記錄警告）。
-func (c *Config) IsRedirectURIAllowed(uri string) bool {
-	if len(c.AllowedRedirectURIs) == 0 {
-		return true
-	}
-	for _, allowed := range c.AllowedRedirectURIs {
-		if allowed == uri {
-			return true
-		}
-	}
-	return false
 }

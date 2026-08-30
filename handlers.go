@@ -27,12 +27,25 @@ func (a *App) handleClientAuthorize(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	clientID := r.URL.Query().Get("client_id")
 
+	// client_id 必填，且需要是 config.yaml 裡登記過的 client；
+	// redirect_uri 只會跟這個 client 自己的白名單比對，跟其他 client 互相隔離，
+	// 避免 A client 借用 B client 登記的 redirect_uri 發起登入流程。
+	if clientID == "" {
+		http.Error(w, "缺少 client_id", http.StatusBadRequest)
+		return
+	}
+	client, ok := a.config.FindClient(clientID)
+	if !ok {
+		log.Printf("[Warn] 未知的 client_id: %s", clientID)
+		http.Error(w, "未知的 client_id", http.StatusBadRequest)
+		return
+	}
 	if clientRedirectURI == "" {
 		http.Error(w, "缺少 redirect_uri", http.StatusBadRequest)
 		return
 	}
-	if !a.config.IsRedirectURIAllowed(clientRedirectURI) {
-		log.Printf("[Warn] 拒絕未在白名單內的 redirect_uri: %s", clientRedirectURI)
+	if !client.IsRedirectURIAllowed(clientRedirectURI) {
+		log.Printf("[Warn] client_id=%s 使用未登記的 redirect_uri: %s", clientID, clientRedirectURI)
 		http.Error(w, "redirect_uri 不被允許", http.StatusBadRequest)
 		return
 	}
@@ -150,9 +163,9 @@ func (a *App) handleClientToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 若授權碼在 /authorize 階段有記錄 client_id，須與這裡通過驗證的 client_id
+	// 授權碼在 /authorize 階段記錄的 client_id，必須與這裡通過驗證的 client_id
 	// 一致，避免授權碼被其他 client 冒用。
-	if boundClientID := userData["client_id"]; boundClientID != "" && boundClientID != clientID {
+	if boundClientID := userData["client_id"]; boundClientID != clientID {
 		log.Printf("[Error] code 綁定的 client_id (%s) 與請求 client_id (%s) 不符", boundClientID, clientID)
 		http.Error(w, "Invalid Code", http.StatusBadRequest)
 		return

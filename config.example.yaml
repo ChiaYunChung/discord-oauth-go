@@ -25,17 +25,16 @@ guilds:
       - "444444444444444444"
     groupName: "another-server-member"
 
-# /authorize 允許導回的 redirect_uri 白名單，需完全相符。
-# 留空則不做檢查（不建議用於正式環境，僅適合本機開發）。
-allowedRedirectURIs:
-  - "https://portainer.example.com/oauth/callback"
-  - "https://litellm.example.com/callback"
-
-# 允許呼叫 /token 端點換取 access_token 的 client。
-# 建議每個串接本服務的系統（Portainer、LiteLLM…）各自設定一組，
-# secret 請自行產生高強度亂數字串。
+# 允許串接本服務的 client。建議每個系統（Portainer、LiteLLM…）各自設定一組：
+# - id/secret：標準 OAuth client_id/client_secret，secret 請自行產生高強度亂數字串
+# - redirectURIs：這個 client 的 /authorize 允許導回的 redirect_uri 白名單，需完全相符。
+#   只跟「這個 client 自己」比對，其他 client 借用不了；留空則不檢查（僅適合本機開發）。
 clients:
   - id: "portainer"
     secret: "change-me"
+    redirectURIs:
+      - "https://portainer.example.com/oauth/callback"
   - id: "litellm"
     secret: "change-me"
+    redirectURIs:
+      - "https://litellm.example.com/callback"
