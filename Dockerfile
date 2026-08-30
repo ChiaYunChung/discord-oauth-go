@@ -3,8 +3,9 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
-COPY *.go ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o sso-broker main.go
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o sso-broker ./cmd/discord-oauth-go
 
 # 第二階段：執行 (Runner)
 FROM alpine:latest

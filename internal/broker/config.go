@@ -1,4 +1,4 @@
-package main
+package broker
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 // RoleIDs 若為空，代表只要是該伺服器成員即可通過；
 // 若有設定，使用者必須擁有其中至少一個角色才算通過。
 // GroupName 是通過此規則後，要塞進 /userinfo 的 groups claim 的名稱，
-// 供 Portainer/LiteLLM 這類支援 group 對應權限的服務使用；留空則不產生 group。
+// 供下游服務做 group 對應權限使用；留空則不產生 group。
 // 同一個 guild id 可以拆成多筆規則（不同 roleIds 對應不同 groupName），
 // 使用者符合多筆規則時，groups 會包含每一筆命中的 groupName。
 type GuildConfig struct {
@@ -21,7 +21,7 @@ type GuildConfig struct {
 	GroupName string   `yaml:"groupName"`
 }
 
-// ClientConfig 描述一個允許串接本服務的 OAuth client（例如 Portainer、LiteLLM）。
+// ClientConfig 描述一個允許串接本服務的 OAuth client（下游服務）。
 // RedirectURIs 是這個 client 專屬的 redirect_uri 白名單，跟其他 client 互相隔離：
 // A client 不能借用 B client 登記的 redirect_uri 發起登入流程。
 // 留空則不檢查該 client 的 redirect_uri（僅適合開發環境）。

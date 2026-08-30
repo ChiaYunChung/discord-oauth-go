@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+
+	"discord-oauth-go/internal/broker"
 )
 
 // loadEnv 讀取本服務向 Discord 註冊的 OAuth client 機敏資訊。
@@ -31,7 +33,7 @@ func main() {
 	if configPath == "" {
 		configPath = "config.yaml"
 	}
-	cfg, err := LoadConfig(configPath)
+	cfg, err := broker.LoadConfig(configPath)
 	if err != nil {
 		log.Fatalf("載入設定檔失敗: %v", err)
 	}
@@ -44,21 +46,8 @@ func main() {
 		}
 	}
 
-	app := &App{
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		redirectURI:  redirectURI,
-		config:       cfg,
-		store:        NewStore(time.Minute),
-	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", handleHealthz)
-	mux.HandleFunc("/authorize", app.handleClientAuthorize)
-	mux.HandleFunc("/token", app.handleClientToken)
-	mux.HandleFunc("/userinfo", app.handleClientUserInfo)
-	mux.HandleFunc("/callback", app.handleDiscordCallback)
+	app := broker.NewApp(clientID, clientSecret, redirectURI, cfg, broker.NewStore(time.Minute))
 
 	log.Println("🚀 Discord OAuth Broker 啟動於 http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Fatal(http.ListenAndServe(":8080", app.Routes()))
 }

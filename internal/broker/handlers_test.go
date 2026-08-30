@@ -1,4 +1,4 @@
-package main
+package broker
 
 import (
 	"encoding/json"
@@ -13,23 +13,11 @@ import (
 
 // newTestApp 建立一個帶假 store 的 App，供 handler 測試使用。
 func newTestApp(cfg *Config) *App {
-	return &App{
-		clientID:     "broker-client-id",
-		clientSecret: "broker-client-secret",
-		redirectURI:  "https://broker.example.com/callback",
-		config:       cfg,
-		store:        NewStore(time.Minute),
-	}
+	return NewApp("broker-client-id", "broker-client-secret", "https://broker.example.com/callback", cfg, NewStore(time.Minute))
 }
 
 func newTestBroker(app *App) *httptest.Server {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", handleHealthz)
-	mux.HandleFunc("/authorize", app.handleClientAuthorize)
-	mux.HandleFunc("/token", app.handleClientToken)
-	mux.HandleFunc("/userinfo", app.handleClientUserInfo)
-	mux.HandleFunc("/callback", app.handleDiscordCallback)
-	return httptest.NewServer(mux)
+	return httptest.NewServer(app.Routes())
 }
 
 // noRedirectClient 不自動跟隨 redirect，讓測試可以檢查 Location header。

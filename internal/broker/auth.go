@@ -1,4 +1,4 @@
-package main
+package broker
 
 import (
 	"crypto/subtle"
@@ -7,7 +7,7 @@ import (
 
 // authenticateClient 驗證呼叫 /token 的 client 身份，回傳通過驗證的 client_id。
 // 依 RFC 6749，同時支援 HTTP Basic Authorization 及 form body 兩種帶法，
-// 相容不同 OAuth client 實作（Portainer、LiteLLM…）。
+// 相容不同 OAuth client 實作。
 func authenticateClient(r *http.Request, cfg *Config) (string, bool) {
 	clientID, clientSecret, ok := r.BasicAuth()
 	if !ok {

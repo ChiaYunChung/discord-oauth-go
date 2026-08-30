@@ -1,4 +1,4 @@
-package main
+package broker
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// 處理來自 Portainer 或 LiteLLM 的授權請求
+// 處理來自下游服務的授權請求
 func (a *App) handleClientAuthorize(w http.ResponseWriter, r *http.Request) {
 	clientRedirectURI := r.URL.Query().Get("redirect_uri")
 	state := r.URL.Query().Get("state")
